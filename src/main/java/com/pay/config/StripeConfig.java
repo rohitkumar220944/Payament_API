@@ -1,0 +1,39 @@
+package com.pay.config;
+
+
+import com.stripe.Stripe;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class StripeConfig {
+
+    public StripeConfig(@Value("${stripe.secret.key}") String secretKey) {
+    	System.out.println("Stripe Secret Key Loaded: " + secretKey.substring(0, 10) + "..."); // Prints first 10 characters
+       
+    	Stripe.apiKey = secretKey;
+    }
+
+    /**
+     * Global CORS configuration for the entire API.
+     */
+    @Bean
+    public WebMvcConfigurer corsConfigurer(
+            @Value("${app.frontend.url:http://localhost:3000}") String frontendUrl
+    ) {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/**")
+                        .allowedOrigins(frontendUrl)
+                        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                        .allowedHeaders("*")
+                        .allowCredentials(true)
+                        .maxAge(3600);
+            }
+        };
+    }
+}
