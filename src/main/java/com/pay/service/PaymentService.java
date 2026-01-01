@@ -1,62 +1,53 @@
 package com.pay.service;
 
 import com.pay.dto.CreatePaymentRequest;
+import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
+import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
-import com.pay.entity.PaymentRecord; // New Import
-import com.pay.repository.PaymentRepository; // New Import
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 @Service
 public class PaymentService {
 
-    private final PaymentRepository paymentRepository;
+    @Value("${stripe.secret.key}")
+    private String stripeSecretKey;
 
-    public PaymentService(PaymentRepository paymentRepository) {
-        this.paymentRepository = paymentRepository;
-    }
+    public PaymentIntent createPayment(CreatePaymentRequest req) throws StripeException {
+        if (req == null) throw new IllegalArgumentException("request is required");
+        if (req.getPaymentMethodId() == null || req.getPaymentMethodId().isBlank()) {
+            throw new IllegalArgumentException("paymentMethodId is required");
+        }
+        if (req.getAmount() <= 0) throw new IllegalArgumentException("amount must be greater than zero");
+        if (req.getCurrency() == null || req.getCurrency().isBlank()) {
+            throw new IllegalArgumentException("currency is required");
+        }
 
-    public PaymentIntent createPayment(CreatePaymentRequest request) throws Exception {
-        long amountMinor = toMinorUnits(request.getAmount(), request.getCurrency());
+        RequestOptions opts = RequestOptions.builder()
+            .setApiKey(stripeSecretKey)
+            .build();
 
         PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
-                .setAmount(amountMinor)
-                .setCurrency(request.getCurrency())
-                .setDescription("Checkout payment via frontend")
-                .putMetadata("paymentMethod", request.getPaymentMethod())
-                .putMetadata("cardHolder", safe(request.getCardHolder()))
-                .putMetadata("cardLast4", last4(request.getCardNumber()))
-                .setAutomaticPaymentMethods(
-                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                                .setEnabled(true)
-                                .build()
-                )
-                .build();
+            .setAmount(toMinorUnits(req.getAmount()))
+            .setCurrency(req.getCurrency())
+            .setPaymentMethod(req.getPaymentMethodId())
+            .addPaymentMethodType("card") // string version avoids enum dependency
+            .setConfirm(true)
+            .setReturnUrl("http://localhost:3000")
+            .setAutomaticPaymentMethods(
+                PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                    .setEnabled(false)
+                    .build()
+            )
+            .setDescription(req.getDescription())
+            .putMetadata("paymentMethod", nullSafe(req.getPaymentMethod()))
+            .putMetadata("cardHolder", nullSafe(req.getCardHolder()))
+            .build();
 
-        PaymentIntent intent = PaymentIntent.create(params);
-
-        PaymentRecord record = new PaymentRecord();
-        record.setStripePaymentIntentId(intent.getId());
-        record.setAmount(intent.getAmount());
-        record.setCurrency(intent.getCurrency());
-        record.setDescription("Checkout payment via frontend");
-        record.setStatus("CREATED");
-        record.setPaymentMethod(request.getPaymentMethod());
-        paymentRepository.save(record);
-
-        return intent;
+        return PaymentIntent.create(params, opts);
     }
 
-    private long toMinorUnits(Long amountRupees, String currency) {
-        if (amountRupees == null) return 0L;
-        // INR uses paise (x100). Adjust if you add zero-decimal currencies later.
-        return amountRupees * 100;
-    }
-
-    private String safe(String v) { return v == null ? "" : v; }
-
-    private String last4(String cardNumber) {
-        if (cardNumber == null) return "";
-        String digits = cardNumber.replaceAll("\\D", "");
-        return digits.length() >= 4 ? digits.substring(digits.length() - 4) : digits;
-    }
+    private long toMinorUnits(double amount) { return Math.round(amount * 100); }
+    private String nullSafe(String v) { return v == null ? "" : v; }
 }

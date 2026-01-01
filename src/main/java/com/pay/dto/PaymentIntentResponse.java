@@ -1,7 +1,5 @@
 package com.pay.dto;
 
-
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -12,5 +10,5 @@ public class PaymentIntentResponse {
     private String clientSecret;
     private Long amount;    // paise
     private String currency;
-    private String status;
+    private String status;  // succeeded, requires_action, etc.
 }
